@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 import torch.utils.tensorboard
 # from loguru import logger
-from torch import Tensor
+from torch import Tensor, nn
 from tqdm import tqdm
 import lib
 import lib.data as data
@@ -19,6 +19,7 @@ class MyDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx], self.label[idx]
+    
     
 
 dataset = data.build_dataset(
@@ -54,6 +55,7 @@ datatest = MyDataset(X_test, Y_test)
 
 trainloader = torch.utils.data.DataLoader(datatrain, batch_size=BATCHSIZE,shuffle=True)
 testloader = torch.utils.data.DataLoader(datatest , batch_size=BATCHSIZE ,shuffle=True)
+loss_fn = nn.MSELoss()
 
 
 for x,y in trainloader:
