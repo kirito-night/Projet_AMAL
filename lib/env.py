@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Union
 
 #PROJECT_DIR = Path(os.environ['projet_AMAL']).absolute().resolve()
-PROJECT_DIR = Path('/Users/kirito-nightsky/Documents/Sorbonne/M2_DAC/AMAL/projet_AMAL').absolute().resolve() # path ""./""
+#PROJECT_DIR = Path('/Users/kirito-nightsky/Documents/Sorbonne/M2_DAC/AMAL/projet_AMAL').absolute().resolve() # path ""./""
+PROJECT_DIR = Path('/Users/christian/Desktop/AMAL/Projet/Projet_AMAL').absolute().resolve() # path ""./""
 CACHE_DIR = PROJECT_DIR / 'cache'
 DATA_DIR = PROJECT_DIR / 'data'
 EXP_DIR = PROJECT_DIR / 'exp'

@@ -6,8 +6,9 @@ from tqdm import tqdm
 import lib
 import lib.data as data
 from torch.utils.data import Dataset, DataLoader
-import torchvision
 import numpy as np
+from oldtabr import Model
+import delu
 
 class MyDataset(Dataset):
     def __init__(self, data, label):
@@ -19,7 +20,8 @@ class MyDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx], self.label[idx]
-    
+
+
     
 
 dataset = data.build_dataset(
@@ -31,7 +33,7 @@ dataset = data.build_dataset(
     y_policy = "standard"
 )
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'mps')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dataset= dataset.to_torch(device)
 
 
@@ -44,7 +46,12 @@ Y_test = dataset.Y['test'].to(
     torch.long if dataset.is_multiclass else torch.float
 )
 
-BATCHSIZE = 128
+BATCHSIZE = 10
+n_epochs = 20
+context_size = 10
+
+train_size = dataset.size('train')
+train_indices = torch.arange(train_size)
 
 X_train = dataset.data['X_num']['train'].to(device)
 X_test = dataset.data['X_num']['test'].to(device)
@@ -52,76 +59,84 @@ X_test = dataset.data['X_num']['test'].to(device)
 
 datatrain = MyDataset(X_train, Y_train)
 datatest = MyDataset(X_test, Y_test)
-
-trainloader = torch.utils.data.DataLoader(datatrain, batch_size=BATCHSIZE,shuffle=True)
-testloader = torch.utils.data.DataLoader(datatest , batch_size=BATCHSIZE ,shuffle=True)
 loss_fn = nn.MSELoss()
+progress = delu.ProgressTracker(16)
+
+model = Model(
+    n_num_features=dataset.n_num_features,
+    n_bin_features=dataset.n_bin_features,
+    cat_cardinalities=dataset.cat_cardinalities(),
+    n_classes=dataset.n_classes(),
+    #
+    num_embeddings = None,  # lib.deep.ModuleSpec
+    d_main =  265,
+    d_multiplier = 2,
+    encoder_n_blocks = 0,
+    predictor_n_blocks = 1,
+    mixer_normalization =  'auto',
+    context_dropout= 0.389,
+    dropout0= 0.389,
+    dropout1=0,
+    normalization= 'LayerNorm',
+    activation= 'ReLU',
+)
+
+def make_mini_batch(data_size, batch_size, shuffle=True): 
+    if shuffle:
+        return torch.randperm(data_size).split(batch_size)
+    else:
+        return torch.aranges(data_size).split(batch_size)
+
+def get_Xy(part, idx):
+    batch = (
+        {
+            key[2:]: dataset.data[key][part]
+            for key in dataset.data
+            if key.startswith('X_')
+        },
+        dataset.Y[part],
+    )
+    return (
+        batch
+        if idx is None
+        else ({k: v[idx] for k, v in batch[0].items()}, batch[1][idx])
+    )
+
+def apply_model(part: str, idx: Tensor, training: bool):
+    x, y = get_Xy(part, idx)
+
+    candidate_indices = train_indices
+    is_train = part == 'train'
+    if is_train:
+        # NOTE: here, the training batch is removed from the candidates.
+        # It will be added back inside the model's forward pass.
+        candidate_indices = candidate_indices[~torch.isin(candidate_indices, idx)]
+    candidate_x, candidate_y = get_Xy(
+        'train',
+        # This condition is here for historical reasons, it could be just
+        # the unconditional `candidate_indices`.
+        None if candidate_indices is train_indices else candidate_indices,
+    )
+
+    return model(
+        x_=x,
+        y=y if is_train else None,
+        candidate_x_=candidate_x,
+        candidate_y=candidate_y,
+        context_size=context_size,
+        is_train=is_train,
+    ).squeeze(-1)
+
+epoch = 0
+while not progress.fail:
+    for idx in make_mini_batch(train_size, batch_size=BATCHSIZE):
+        model.train()
+        print(idx.shape)
+        prediction = apply_model('train', idx, training=True)
+        print('ok')
+        break
+    epoch += 1
+    break
 
 
-for x,y in trainloader:
-    print(y)
 
-# def train_epoch(dataLoader, model, loss_fn, optim, device = None, num_classes = 2):
-#     if device == None: 
-#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#     allLoss = []
-#     for x,y in tqdm(dataLoader):
-#         optim.zero_grad()
-#         # for scores
-#         acc = tm.classification.Accuracy(task="multiclass", num_classes=num_classes, top_k=1).to(device)
-#         x = x.to(device)
-#         y = y.to(device)
-#         yhat = model(x)
-#         loss = loss_fn(yhat,y)
-#         allLoss.append(loss.item())
-#         acc(yhat.argmax(1), y)
-
-#         # Optimization
-#         loss.backward()
-#         optim.step()
-        
-    
-#     return np.array(allLoss).mean(), acc.compute().item()
-
-# # check loss on test and accuracy
-# def test_epoch(dataLoader, model, loss_fn, device = None, num_classes = 2):
-#     if device == None: 
-#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#     allLoss = []
-#     with torch.no_grad():
-#         for x,y in tqdm(dataLoader):
-#             # for scores
-#             acc = tm.classification.Accuracy(task="multiclass", num_classes=num_classes, top_k=1).to(device)
-#             x = x.to(device)
-#             y = y.to(device)
-#             yhat = model(x)
-#             loss = loss_fn(yhat,y)
-#             allLoss.append(loss.item())
-#             acc(yhat.argmax(1), y)
-
-#     return np.array(allLoss).mean(), acc.compute().item()
-    
-
-
-# eSize = 50
-# outputS = 2
-
-
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# model = Model(embeddings, outputS, eSize).to(device)
-
-# # Loss function
-# loss_fn = nn.
-
-# # Optimisateur 
-# lr = 0.001
-# optim = torch.optim.Adam(list(model.parameters()),lr = lr)
-# optim.zero_grad()
-
-# num_epoch = 7
-# for epoch in range(num_epoch):
-#     print("Epoch :",epoch)
-#     resultLoss, trainAcc = train_epoch(trainloader,model,loss_fn,optim,device,num_classes=outputS)
-#     testLoss, testAcc = test_epoch(testloader, model, loss_fn, device=device, num_classes=outputS)
-#     print(f'Training Loss : {resultLoss} and Accuracy {trainAcc:.2f}')
-#     print(f'Test Loss : {testLoss} and Accuracy {testAcc:.2f}')
